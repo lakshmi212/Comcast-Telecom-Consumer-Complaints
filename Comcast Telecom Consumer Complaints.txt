@@ -1,0 +1,167 @@
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lubridate)
+library(data.table)
+
+# 1) Import data into R environment
+
+Comcast_data = read.csv("TelecomComplaints data.csv", header = TRUE, sep = "," )
+comcast = data.frame(Comcast_data)
+comcast$Date_NEW <- strptime(as.character(comcast$Date), "%d/%m/%Y" )
+comcast$Date_NEW1 <- strptime(as.character(comcast$Date), "%d-%m-%Y")
+comcast$Date_Updated <- case_when(is.na(comcast$Date_NEW) ~comcast$Date_NEW1,
+                                  TRUE ~comcast$Date_NEW)
+View(comcast)
+
+
+# ------------------------------------------------------
+#-----2) Provide the trend chart for the number of complaints at monthly and daily granularity levels
+
+comcast$MonthName <- months(comcast$Date_Updated)
+Month_counts <- count(comcast$MonthName) 
+ggplot(Month_counts, aes( y= factor(x,levels= month.name, ordered = T), x = freq))+
+  geom_bar(stat = "identity", fill = "steelblue") +
+  ggtitle("Month wise frequency of complaints") +
+  geom_text(aes(label = freq), hjust = 0 ) +
+  labs(x ="No of Complaints", y = "Month")
+
+#---- Day wise granularity 
+
+comcast$daywise <- date(comcast$Date_Updated)
+Day_counts <- count(comcast$daywise)
+ggplot(Day_counts, aes( x= factor(x, ordered = T), y = freq))+
+  geom_bar(stat = "identity" , fill = "steelblue" ) +
+  scale_x_discrete(labels = abbreviate,guide = guide_axis(n.dodge=5)) +
+  ggtitle("Day wise frequency of complaints") +
+  theme(text = element_text(size=8), axis.text.x = element_text(angle=90, hjust=1)) +
+  labs(x ="Date", y = "No of Complaints")
+
+
+#-----------------------------------------------------------
+#  ----3) Provide a table with the frequency of complaint types.
+
+
+comcast$Complaint_type <- case_when(
+  tolower(comcast$Customer.Complaint) %like%  "internet" | 
+    tolower(comcast$Customer.Complaint) %like%  "speed" |
+    tolower(comcast$Customer.Complaint) %like%  "cable" |
+    tolower(comcast$Customer.Complaint) %like%   "xfinity" |
+    tolower(comcast$Customer.Complaint) %like%  "frequent" |
+    tolower(comcast$Customer.Complaint) %like% "broadband" ~ "Internet Issues",
+  tolower(comcast$Customer.Complaint) %like%  "payment" |  
+    tolower(comcast$Customer.Complaint) %like% "bill"|  
+    tolower(comcast$Customer.Complaint) %like% "fee" |
+    tolower(comcast$Customer.Complaint) %like% "claims" |
+    tolower(comcast$Customer.Complaint) %like% "refunding"|
+    tolower(comcast$Customer.Complaint) %like% "overcharg"|
+    tolower(comcast$Customer.Complaint) %like% "paying"| 
+    tolower(comcast$Customer.Complaint) %like% "charge"|
+    tolower(comcast$Customer.Complaint) %like% "rental" |
+    tolower(comcast$Customer.Complaint) %like% "credit after cancellation" |
+    tolower(comcast$Customer.Complaint) %like% "refund" |
+    tolower(comcast$Customer.Complaint) %like%  "pric" |
+    tolower(comcast$Customer.Complaint) %like%  "rate" ~ "Billing and Payment Issues",
+  tolower(comcast$Customer.Complaint) %like%  "service"|
+    tolower(comcast$Customer.Complaint) %like% "installation"|
+    tolower(comcast$Customer.Complaint) %like% "username"|
+    tolower(comcast$Customer.Complaint) %like% "account" |
+    tolower(comcast$Customer.Complaint) %like% "wifi" |
+    tolower(comcast$Customer.Complaint) %like% "support"|
+    tolower(comcast$Customer.Complaint) %like%  "lack of"|
+    tolower(comcast$Customer.Complaint) %like%  "resol"|
+    tolower(comcast$Customer.Complaint) %like% "access" ~"Service Issues",
+  tolower(comcast$Customer.Complaint) %like%  "cap" |
+    tolower(comcast$Customer.Complaint) %like% "data usage"|
+    tolower(comcast$Customer.Complaint) %like% "data plan" |
+    tolower(comcast$Customer.Complaint) %like% "data limit" ~ "Data usage",
+  tolower(comcast$Customer.Complaint) %like% "email" ~ "Email",
+  TRUE ~ "others" ) 
+
+Count_complaints <- count(comcast$Complaint_type)
+
+ylim2 <- c(0, 1.1*max(Count_complaints$freq))
+Type_Complaint <- barplot(Count_complaints$freq, names.arg = Count_complaints$x, las =2,
+                          ylim = ylim2, width = 0.25)
+#---  label on top of the bar     
+text(x = Type_Complaint, y = Count_complaints$freq,
+     label = Count_complaints$freq, col = "red", pos = 2)
+
+
+# -------------------------------------------------------------------------------
+# 4) Create a new categorical variable with value as Open and Closed. Open & Pending is to be categorized as Open and Closed & Solved is to be categorized as Closed.
+
+comcast$Complaints <- ifelse(comcast$Status == "Open" | comcast$Status =="Pending", "Open", "Closed") 
+comcast$Complaints
+
+#----------------------------------------------------------------------------
+# 5) Provide state wise status of complaints in a stacked bar chart. Use the categorized variable from Q3. Provide insights on
+
+#State wise complaints
+State_count <- count(comcast$State)
+
+ylim0 <- c(0, 1.1*max(State_count$freq))
+
+Complaint_freq <- barplot(State_count$freq,
+                          xlab = "State Name", ylab = "State wise complaints count",
+                          names.arg = State_count$x ,
+                          main = "State wise No of Complaints", width = 0.5,las = 2,
+                          ylim = ylim0, cex.names =0.5, cex.lab = "2" ) 
+
+text(x= Complaint_freq, y = State_count$freq, col = "red", cex = 0.3, pos = 3,
+     label = State_count$freq  )
+
+# Which state has the maximum complaints
+
+State_count <- count(comcast$State)
+Sate_wise_Max_Count <- filter( State_count, State_count$freq == max(State_count$freq) )
+Sate_wise_Max_Count
+ylim <- c(0, 1.1*max(Sate_wise_Max_Count$freq))
+
+Max_freq <- barplot(Sate_wise_Max_Count$freq,
+                    xlab = "State Name", ylab = "",
+                    names.arg = Sate_wise_Max_Count$x ,
+                    main = "State has Max No of Complaints", width = 0.2,ylim = ylim)   
+#label on top of the bar
+text(x= Max_freq, y = Sate_wise_Max_Count$freq, col = "red",pos = 3,
+     label = Sate_wise_Max_Count$freq)
+
+#Which state has the highest percentage of unresolved complaints
+
+Comcast_data_1 <- data.frame(comcast$Complaints, comcast$Ticket, comcast$State, comcast$Received.Via )
+Open_Complaints <- filter(Comcast_data_1,Comcast_data_1$comcast.Complaints == "Open")
+State_unresolved_count <- count(Open_Complaints$comcast.State )
+State_unresolved_count <- mutate(State_unresolved_count, percentage_unre = (State_unresolved_count$freq/sum(State_unresolved_count$freq))*100 )
+Sate_Open_Max_Count <- filter(State_unresolved_count, State_unresolved_count$percentage_unre == max(State_unresolved_count$percentage_unre) )
+
+ylim1 <- c(0, 1.4*max(Sate_Open_Max_Count$percentage_unre))
+
+max_bar <- barplot(Sate_Open_Max_Count$percentage_unre ,
+                   xlab = "State Name", ylab = "",
+                   names.arg = Sate_Open_Max_Count$x ,
+                   main = "State has Max No of open Complaints", width = 0.5,
+                   ylim = ylim1 )
+#-- value on top of the bar
+text(x = max_bar, y = Sate_Open_Max_Count$percentage_unre, 
+     label = Sate_Open_Max_Count$percentage_unre, pos = 3, cex = 0.8, 
+     col = "red")
+
+#-----------------------------------------------------------------------------
+#6) Provide the percentage of complaints resolved till date, which were received through theInternet and customer care calls
+
+Closed_complaints = filter(Comcast_data_1, Comcast_data_1$comcast.Complaints == "Closed" )
+count_closed_complaints <- count(Closed_complaints$comcast.Received.Via )
+Percentage_closed_complaints <- mutate(count_closed_complaints, 
+                                       percentage = (count_closed_complaints$freq/sum(count_closed_complaints$freq) )*100 )
+
+ylim3 =c(0, 1.2*max(Percentage_closed_complaints$percentage))
+#-----   Barplot
+xx <- barplot(Percentage_closed_complaints$percentage ,
+              xlab = "", ylab = "",
+              names.arg = Percentage_closed_complaints$x ,
+              main = "Percentage of closed complaints", width = 0.85,
+              ylim = ylim3)
+## Add text at top of bars
+text(x = xx, y = Percentage_closed_complaints$percentage, 
+     label = Percentage_closed_complaints$percentage, pos = 3, cex = 0.8, 
+     col = "red")
